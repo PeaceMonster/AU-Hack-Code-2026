@@ -8,12 +8,6 @@ from .model import FlowInfo, InfoBundle, Region
 DATA = "data"
 
 
-# def get_spot_prices(region: Region):
-#     with open(f"{DATA}/spot-price/{region}-spot-price.csv") as f:
-#         data = list(csv.DictReader(f))
-#     return data
-
-
 def get_info(region: Region) -> InfoBundle:
 
     return InfoBundle(

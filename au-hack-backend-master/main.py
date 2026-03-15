@@ -20,8 +20,6 @@ AVAILABLE_REGIONS = [
     Region.PL,
 ]
 
-# TODO: Error handling
-
 
 @app.route("/")
 def hello_world():
