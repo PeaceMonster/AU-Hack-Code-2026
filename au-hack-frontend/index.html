@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>DataLink — Serial Bridge</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            /* ── RESET & TOKENS ──────────────────────────────────────────── */
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            :root {
+                --bg: #f4f6f8;
+                --surface: #ffffff;
+                --panel: #f9fafb;
+                --border: #d0d5dd;
+                --accent: #1a6ef5;
+                --accent2: #0a4bcc;
+                --text: #1a2030;
+                --muted: #6b7585;
+                --danger: #d93025;
+                --success: #1a8a4a;
+                --mono: "Share Tech Mono", monospace;
+                --sans: "Barlow Condensed", sans-serif;
+            }
+
+            html,
+            body {
+                height: 100%;
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--sans);
+                font-size: 16px;
+                overflow: hidden;
+            }
+
+            /* ── LAYOUT ──────────────────────────────────────────────────── */
+            .shell {
+                display: grid;
+                grid-template-rows: 44px 1fr;
+                height: 100vh;
+            }
+
+            /* ── HEADER ──────────────────────────────────────────────────── */
+            header {
+                display: flex;
+                align-items: center;
+                gap: 18px;
+                padding: 0 20px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+                font-family: var(--mono);
+                font-size: 13px;
+                letter-spacing: 0.04em;
+            }
+            header .logo {
+                color: var(--accent2);
+                font-size: 15px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+            }
+            header .sep {
+                color: var(--border);
+            }
+            header .tag {
+                color: var(--muted);
+                font-size: 11px;
+            }
+            header .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--muted);
+                margin-left: auto;
+                transition: background 0.4s;
+            }
+            header .status-dot.connected {
+                background: var(--success);
+                box-shadow: 0 0 6px var(--success);
+            }
+            header .status-label {
+                font-size: 11px;
+                color: var(--muted);
+                margin-left: 6px;
+            }
+
+            /* ── SPLIT PANES ─────────────────────────────────────────────── */
+            .panes {
+                display: grid;
+                grid-template-columns: 1fr 380px;
+                overflow: hidden;
+            }
+
+            /* ── MAP PANE ────────────────────────────────────────────────── */
+            .map-pane {
+                position: relative;
+                background: var(--bg);
+                border-right: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .pane-label {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.14em;
+                color: var(--muted);
+                text-transform: uppercase;
+                padding: 10px 16px 6px;
+                border-bottom: 1px solid var(--border);
+            }
+            .map-wrap {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                overflow: hidden;
+            }
+            #europe-map {
+                width: 100%;
+                height: 100%;
+                max-height: 100%;
+                display: block;
+            }
+
+            /* country SVG paths */
+            .country {
+                fill: #dde3ec;
+                stroke: #b0bac8;
+                stroke-width: 0.8;
+                cursor: not-allowed;
+                opacity: 0.45;
+                transition:
+                    fill 0.2s,
+                    stroke 0.2s,
+                    opacity 0.2s;
+            }
+            .country.available {
+                fill: #c8d8f0;
+                stroke: #7aa4d8;
+                opacity: 1;
+                cursor: pointer;
+            }
+            .country.available:hover {
+                fill: #a8c4ec;
+                stroke: var(--accent);
+            }
+            .country.selected {
+                fill: #bcd4f8;
+                stroke: var(--accent2);
+                stroke-width: 1.8;
+                opacity: 1;
+            }
+            .country.available.selected {
+                fill: #bcd4f8;
+                stroke: var(--accent2);
+                stroke-width: 1.8;
+            }
+
+            .map-legend {
+                padding: 8px 16px 10px;
+                display: flex;
+                gap: 16px;
+                font-family: var(--mono);
+                font-size: 10px;
+                color: var(--muted);
+                border-top: 1px solid var(--border);
+            }
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .legend-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 1px;
+            }
+
+            /* ── CONTROL PANE ────────────────────────────────────────────── */
+            .ctrl-pane {
+                background: var(--panel);
+                display: flex;
+                flex-direction: column;
+                overflow-y: auto;
+            }
+
+            .ctrl-inner {
+                flex: 1;
+                padding: 20px 18px;
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+            }
+
+            /* ── FIELD GROUPS ────────────────────────────────────────────── */
+            .field-group {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .field-label {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.14em;
+                color: var(--muted);
+                text-transform: uppercase;
+            }
+
+            /* dropdown */
+            select {
+                width: 100%;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text);
+                font-family: var(--sans);
+                font-size: 15px;
+                font-weight: 600;
+                padding: 10px 12px;
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6070' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 12px center;
+                cursor: pointer;
+                transition:
+                    border-color 0.2s,
+                    box-shadow 0.2s;
+                outline: none;
+                letter-spacing: 0.02em;
+            }
+            select:focus {
+                border-color: var(--accent2);
+                box-shadow: 0 0 0 2px rgba(71, 200, 255, 0.12);
+            }
+            select option {
+                background: var(--surface);
+            }
+
+            /* divider */
+            .divider {
+                height: 1px;
+                background: var(--border);
+            }
+
+            /* timestamp section */
+            .ts-tabs {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 2px;
+                overflow: hidden;
+            }
+            .ts-tab {
+                padding: 7px 0;
+                text-align: center;
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--muted);
+                cursor: pointer;
+                transition:
+                    background 0.2s,
+                    color 0.2s;
+                user-select: none;
+            }
+            .ts-tab.active {
+                background: var(--surface);
+                color: var(--accent2);
+            }
+
+            .ts-body {
+                display: none;
+            }
+            .ts-body.active {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            /* datetime input */
+            input[type="datetime-local"] {
+                width: 100%;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text);
+                font-family: var(--mono);
+                font-size: 13px;
+                padding: 10px 12px;
+                outline: none;
+                transition: border-color 0.2s;
+                color-scheme: light;
+            }
+            input[type="datetime-local"]:focus {
+                border-color: var(--accent2);
+                box-shadow: 0 0 0 2px rgba(71, 200, 255, 0.12);
+            }
+
+            /* slider */
+            .slider-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            input[type="range"] {
+                flex: 1;
+                -webkit-appearance: none;
+                height: 3px;
+                background: var(--border);
+                outline: none;
+                border-radius: 2px;
+                cursor: pointer;
+            }
+            input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 14px;
+                height: 14px;
+                background: var(--accent);
+                border-radius: 2px;
+                cursor: pointer;
+                transition: transform 0.15s;
+            }
+            input[type="range"]::-webkit-slider-thumb:hover {
+                transform: scale(1.25);
+            }
+            input[type="range"]::-moz-range-thumb {
+                width: 14px;
+                height: 14px;
+                background: var(--accent);
+                border: none;
+                border-radius: 2px;
+                cursor: pointer;
+            }
+            .slider-val {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--accent2);
+                min-width: 26px;
+                text-align: right;
+            }
+
+            .slider-labels {
+                display: flex;
+                justify-content: space-between;
+                font-family: var(--mono);
+                font-size: 9px;
+                color: var(--muted);
+                margin-top: -4px;
+            }
+
+            .ts-display {
+                font-family: var(--mono);
+                font-size: 12px;
+                color: var(--accent2);
+                background: var(--surface);
+                border: 1px solid var(--border);
+                padding: 8px 10px;
+                letter-spacing: 0.04em;
+            }
+
+            /* payload preview */
+            .preview-box {
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-left: 3px solid var(--accent2);
+                padding: 10px 12px;
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--accent2);
+                letter-spacing: 0.04em;
+                line-height: 1.7;
+                word-break: break-all;
+            }
+            .preview-box .pl {
+                color: var(--muted);
+                font-size: 9px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                display: block;
+                margin-bottom: 4px;
+            }
+
+            /* send button */
+            .send-btn {
+                width: 100%;
+                padding: 14px;
+                background: var(--accent);
+                color: #ffffff;
+                border: none;
+                font-family: var(--mono);
+                font-size: 13px;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                cursor: pointer;
+                font-weight: 700;
+                transition:
+                    background 0.15s,
+                    transform 0.1s,
+                    box-shadow 0.15s;
+                position: relative;
+                overflow: hidden;
+            }
+            .send-btn:hover {
+                background: var(--accent2);
+                box-shadow: 0 0 20px rgba(26, 110, 245, 0.25);
+            }
+            .send-btn:active {
+                transform: scale(0.98);
+            }
+            .send-btn:disabled {
+                background: var(--border);
+                color: var(--muted);
+                cursor: not-allowed;
+                box-shadow: none;
+            }
+            .send-btn .spinner {
+                display: none;
+                width: 14px;
+                height: 14px;
+                border: 2px solid #ffffff;
+                border-top-color: transparent;
+                border-radius: 50%;
+                animation: spin 0.6s linear infinite;
+                margin: 0 auto;
+            }
+            .send-btn.loading .btn-text {
+                display: none;
+            }
+            .send-btn.loading .spinner {
+                display: block;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* response log */
+            .log-area {
+                flex: 0;
+                font-family: var(--mono);
+                font-size: 10px;
+                color: var(--muted);
+                border-top: 1px solid var(--border);
+                padding: 10px 18px;
+                min-height: 120px;
+                overflow-y: auto;
+                line-height: 1.6;
+            }
+            .log-area .log-ok {
+                color: var(--success);
+            }
+            .log-area .log-err {
+                color: var(--danger);
+            }
+            .log-area .log-info {
+                color: var(--muted);
+            }
+
+            /* scrollbar */
+            ::-webkit-scrollbar {
+                width: 4px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: var(--border);
+                border-radius: 2px;
+            }
+
+            /* ── COUNTRY POPUP ───────────────────────────────────────────── */
+            .country-popup {
+                position: absolute;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-top: 3px solid var(--accent2);
+                box-shadow: 0 4px 24px rgba(10, 30, 80, 0.13);
+                min-width: 220px;
+                z-index: 100;
+                pointer-events: none;
+                opacity: 0;
+                transform: translateY(6px);
+                transition:
+                    opacity 0.18s,
+                    transform 0.18s;
+            }
+            .country-popup.visible {
+                opacity: 1;
+                transform: translateY(0);
+                pointer-events: auto;
+            }
+            .popup-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 12px 8px;
+                border-bottom: 1px solid var(--border);
+            }
+            .popup-country-name {
+                font-family: var(--mono);
+                font-size: 12px;
+                color: var(--accent2);
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+            }
+            .popup-country-code {
+                font-family: var(--mono);
+                font-size: 10px;
+                color: var(--muted);
+                letter-spacing: 0.08em;
+                margin-left: 6px;
+            }
+            .popup-close {
+                font-family: var(--mono);
+                font-size: 14px;
+                color: var(--muted);
+                cursor: pointer;
+                line-height: 1;
+                padding: 0 2px;
+                pointer-events: auto;
+            }
+            .popup-close:hover {
+                color: var(--text);
+            }
+            .popup-fields {
+                padding: 10px 12px 4px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .popup-field {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .popup-field-label {
+                font-family: var(--mono);
+                font-size: 9px;
+                letter-spacing: 0.12em;
+                color: var(--muted);
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
+            .popup-field-value {
+                font-family: var(--mono);
+                font-size: 12px;
+                color: var(--text);
+                letter-spacing: 0.04em;
+            }
+            .popup-field-value.loading {
+                color: var(--border);
+            }
+            .popup-ts {
+                padding: 7px 12px 8px;
+                font-family: var(--mono);
+                font-size: 9px;
+                color: var(--muted);
+                letter-spacing: 0.06em;
+                border-top: 1px solid var(--border);
+                margin-top: 8px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="shell">
+            <!-- ── HEADER ─────────────────────────────────────────────── -->
+            <header>
+                <span class="logo">DataLink</span>
+                <span class="sep">/</span>
+                <span class="tag">Serial Bridge v1.0</span>
+                <span class="status-dot" id="statusDot"></span>
+                <span class="status-label" id="statusLabel">no port</span>
+            </header>
+
+            <!-- ── PANES ─────────────────────────────────────────────── -->
+            <div class="panes">
+                <!-- MAP PANE -->
+                <div class="map-pane">
+                    <div class="pane-label">// europe — select region</div>
+                    <div class="map-wrap" id="map-wrap">
+                        <!-- D3 map rendered here by script -->
+                        <div
+                            id="map-loading"
+                            style="
+                                font-family: var(--mono);
+                                font-size: 11px;
+                                color: var(--muted);
+                                letter-spacing: 0.1em;
+                            "
+                        >
+                            LOADING MAP…
+                        </div>
+                    </div>
+                    <div class="map-legend">
+                        <div class="legend-item">
+                            <div
+                                class="legend-dot"
+                                style="
+                                    background: #dde3ec;
+                                    border: 1px solid #b0bac8;
+                                    opacity: 0.5;
+                                "
+                            ></div>
+                            <span>not available</span>
+                        </div>
+                        <div class="legend-item">
+                            <div
+                                class="legend-dot"
+                                style="
+                                    background: #c8d8f0;
+                                    border: 1px solid #7aa4d8;
+                                "
+                            ></div>
+                            <span>available</span>
+                        </div>
+                        <div class="legend-item">
+                            <div
+                                class="legend-dot"
+                                style="
+                                    background: #bcd4f8;
+                                    border: 1.5px solid #0a4bcc;
+                                "
+                            ></div>
+                            <span>selected</span>
+                        </div>
+                        <div
+                            style="margin-left: auto; font-size: 9px"
+                            id="selectedCountryLabel"
+                        >
+                            —
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROL PANE -->
+                <div class="ctrl-pane">
+                    <div class="pane-label">// parameters</div>
+                    <div class="ctrl-inner">
+                        <!-- Info type -->
+                        <div class="field-group">
+                            <label class="field-label" for="infoType"
+                                >Information Type</label
+                            >
+                            <select id="infoType">
+                                {% for t in info_types %}
+                                <option value="{{ t.id }}">
+                                    {{ t.label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <!-- Timestamp -->
+                        <div class="field-group">
+                            <label class="field-label">Timestamp</label>
+
+                            <div class="ts-tabs">
+                                <div class="ts-tab active" data-tab="slider">
+                                    ⟡ Slider
+                                </div>
+                                <div class="ts-tab" data-tab="input">
+                                    ⌨ Manual Input
+                                </div>
+                            </div>
+
+                            <!-- SLIDER TAB -->
+                            <div class="ts-body active" id="tab-slider">
+                                <div class="slider-row">
+                                    <input
+                                        type="range"
+                                        id="tsSlider"
+                                        min="0"
+                                        max="100"
+                                        value="50"
+                                        step="1"
+                                    />
+                                    <span class="slider-val" id="sliderPct"
+                                        >50%</span
+                                    >
+                                </div>
+                                <div class="slider-labels">
+                                    <span id="sliderMin">—</span>
+                                    <span style="color: var(--muted)"
+                                        >relative offset</span
+                                    >
+                                    <span id="sliderMax">now</span>
+                                </div>
+                                <div class="ts-display" id="sliderTsDisplay">
+                                    —
+                                </div>
+                            </div>
+
+                            <!-- INPUT TAB -->
+                            <div class="ts-body" id="tab-input">
+                                <input type="datetime-local" id="tsInput" />
+                                <div class="ts-display" id="inputTsDisplay">
+                                    —
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <!-- Payload preview -->
+                        <div class="field-group">
+                            <label class="field-label">Payload Preview</label>
+                            <div class="preview-box">
+                                <span class="pl">serial out →</span>
+                                <span id="payloadPreview">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Send button -->
+                        <button class="send-btn" id="sendBtn">
+                            <span class="btn-text">▶ SEND TO ARDUINO</span>
+                            <div class="spinner"></div>
+                        </button>
+                    </div>
+                    <!-- /ctrl-inner -->
+
+                    <!-- Log -->
+                    <div class="log-area" id="logArea">
+                        <span class="log-info"
+                            >[sys] ready. awaiting command.</span
+                        >
+                    </div>
+                </div>
+            </div>
+            <!-- /panes -->
+        </div>
+        <!-- /shell -->
+
+        <!-- ── COUNTRY DATA POPUP ───────────────────────────────────── -->
+        <div class="country-popup" id="countryPopup">
+            <div class="popup-header">
+                <div>
+                    <span class="popup-country-name" id="popupName">—</span>
+                    <span class="popup-country-code" id="popupCode"></span>
+                </div>
+                <span class="popup-close" id="popupClose">✕</span>
+            </div>
+            <div class="popup-fields">
+                <div class="popup-field">
+                    <span class="popup-field-label">Spot Price</span>
+                    <span class="popup-field-value loading" id="popupSpotPrice"
+                        >—</span
+                    >
+                </div>
+                <div class="popup-field">
+                    <span class="popup-field-label">Total Load</span>
+                    <span class="popup-field-value loading" id="popupTotalLoad"
+                        >—</span
+                    >
+                </div>
+                <div class="popup-field">
+                    <span class="popup-field-label">Flow In</span>
+                    <span class="popup-field-value loading" id="popupFlowIn"
+                        >—</span
+                    >
+                </div>
+                <div class="popup-field">
+                    <span class="popup-field-label">Flow Out</span>
+                    <span class="popup-field-value loading" id="popupFlowOut"
+                        >—</span
+                    >
+                </div>
+            </div>
+            <div class="popup-ts" id="popupTs">ts: —</div>
+        </div>
+
+        <script>
+            // ── STATE ─────────────────────────────────────────────────────────────────
+            const state = {
+                infoType: document.getElementById("infoType").value,
+                timestamp: null,
+                activeTab: "slider",
+                selectedCountry: null,
+            };
+
+            // ── UTILS ─────────────────────────────────────────────────────────────────
+            const now = () => new Date();
+            const pad = (n) => String(n).padStart(2, "0");
+
+            function fmtDatetime(d) {
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+
+            function fmtDisplay(d) {
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            }
+
+            // ── TIMESTAMP RANGE ───────────────────────────────────────────────────────
+            // Slider spans 2024-01-01T00:00 → 2025-12-31T23:59
+            const RANGE_START = new Date("2024-01-01T00:00:00");
+            const RANGE_END = new Date("2025-12-31T23:59:59");
+            const BASE_MS = RANGE_START.getTime();
+            const RANGE_MS = RANGE_END.getTime() - BASE_MS;
+
+            function sliderToDate(val) {
+                return new Date(BASE_MS + (val / 100) * RANGE_MS);
+            }
+
+            function initSliderLabels() {
+                document.getElementById("sliderMin").textContent = "2024-01-01";
+                document.getElementById("sliderMax").textContent = "2025-12-31";
+            }
+
+            // ── SLIDER ────────────────────────────────────────────────────────────────
+            const tsSlider = document.getElementById("tsSlider");
+            const sliderPct = document.getElementById("sliderPct");
+            const sliderTsDisplay = document.getElementById("sliderTsDisplay");
+
+            tsSlider.addEventListener("input", () => {
+                const d = sliderToDate(+tsSlider.value);
+                sliderPct.textContent = tsSlider.value + "%";
+                sliderTsDisplay.textContent = fmtDisplay(d);
+                state.timestamp = fmtDatetime(d);
+                updatePreview();
+            });
+
+            // init
+            tsSlider.dispatchEvent(new Event("input"));
+
+            // ── DATETIME INPUT ────────────────────────────────────────────────────────
+            const tsInput = document.getElementById("tsInput");
+            const inputTsDisplay = document.getElementById("inputTsDisplay");
+
+            // Constrain to 2024–2025
+            tsInput.min = "2024-01-01T00:00";
+            tsInput.max = "2025-12-31T23:59";
+            tsInput.value = "2024-01-01T00:00";
+            inputTsDisplay.textContent = "2024-01-01 00:00:00";
+
+            tsInput.addEventListener("input", () => {
+                const d = new Date(tsInput.value);
+                if (isNaN(d)) {
+                    inputTsDisplay.textContent = "invalid date";
+                    return;
+                }
+                // clamp
+                if (d < RANGE_START) {
+                    tsInput.value = fmtDatetime(RANGE_START);
+                }
+                if (d > RANGE_END) {
+                    tsInput.value = fmtDatetime(RANGE_END);
+                }
+                inputTsDisplay.textContent = fmtDisplay(
+                    new Date(tsInput.value),
+                );
+                state.timestamp = tsInput.value;
+                updatePreview();
+            });
+
+            // ── TABS ──────────────────────────────────────────────────────────────────
+            document.querySelectorAll(".ts-tab").forEach((tab) => {
+                tab.addEventListener("click", () => {
+                    document
+                        .querySelectorAll(".ts-tab")
+                        .forEach((t) => t.classList.remove("active"));
+                    document
+                        .querySelectorAll(".ts-body")
+                        .forEach((b) => b.classList.remove("active"));
+                    tab.classList.add("active");
+                    const key = tab.dataset.tab;
+                    document
+                        .getElementById("tab-" + key)
+                        .classList.add("active");
+                    state.activeTab = key;
+                    // sync timestamp
+                    if (key === "slider") {
+                        state.timestamp = fmtDatetime(
+                            sliderToDate(+tsSlider.value),
+                        );
+                    } else {
+                        state.timestamp = tsInput.value;
+                    }
+                    updatePreview();
+                });
+            });
+
+            // ── INFO TYPE ─────────────────────────────────────────────────────────────
+            document
+                .getElementById("infoType")
+                .addEventListener("change", (e) => {
+                    state.infoType = e.target.value;
+                    updatePreview();
+                });
+
+            // ── PREVIEW ───────────────────────────────────────────────────────────────
+            function updatePreview() {
+                const ts = state.timestamp || "—";
+                const it = state.infoType || "—";
+                document.getElementById("payloadPreview").textContent =
+                    `${it}|${ts}|<value>`;
+            }
+            updatePreview();
+
+            // ── SEND ──────────────────────────────────────────────────────────────────
+            const sendBtn = document.getElementById("sendBtn");
+
+            sendBtn.addEventListener("click", async () => {
+                if (!state.timestamp || !state.infoType) {
+                    log("missing parameters", "err");
+                    return;
+                }
+                sendBtn.disabled = true;
+                sendBtn.classList.add("loading");
+                log(`sending → ${state.infoType} @ ${state.timestamp}`, "info");
+
+                try {
+                    const res = await fetch("/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            info_type: state.infoType,
+                            timestamp: state.timestamp,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        log(`✓ sent: ${data.payload}`, "ok");
+                        flashBtn();
+                    } else {
+                        log(`✗ error: ${data.error}`, "err");
+                    }
+                } catch (e) {
+                    log(`✗ network error: ${e.message}`, "err");
+                } finally {
+                    sendBtn.disabled = false;
+                    sendBtn.classList.remove("loading");
+                }
+            });
+
+            function flashBtn() {
+                sendBtn.style.background = "#1a8a4a";
+                setTimeout(() => {
+                    sendBtn.style.background = "";
+                }, 700);
+            }
+
+            // ── LOG ───────────────────────────────────────────────────────────────────
+            const logArea = document.getElementById("logArea");
+            function log(msg, type = "info") {
+                const ts = fmtDisplay(now()).slice(11);
+                const el = document.createElement("div");
+                el.className = `log-${type}`;
+                el.textContent = `[${ts}] ${msg}`;
+                logArea.appendChild(el);
+                logArea.scrollTop = logArea.scrollHeight;
+                // keep last 50
+                while (logArea.children.length > 50)
+                    logArea.removeChild(logArea.firstChild);
+            }
+
+            // ── SERIAL STATUS POLL ────────────────────────────────────────────────────
+            async function pollPorts() {
+                try {
+                    const res = await fetch("/ports");
+                    const ports = await res.json();
+                    const dot = document.getElementById("statusDot");
+                    const lbl = document.getElementById("statusLabel");
+                    if (ports.length > 0) {
+                        dot.classList.add("connected");
+                        lbl.textContent = ports[0];
+                    } else {
+                        dot.classList.remove("connected");
+                        lbl.textContent = "no port";
+                    }
+                } catch (e) {}
+            }
+            pollPorts();
+            //setInterval(pollPorts, 5000);
+
+            // ── MAP (D3 + TopoJSON real geography) ────────────────────────────────────
+            const AVAILABLE = new Set([
+                "AT",
+                "BE",
+                "CH",
+                "CZ",
+                "DE",
+                "DK1",
+                "FR",
+                "NL",
+                "PL",
+            ]);
+            const selectedLabel = document.getElementById(
+                "selectedCountryLabel",
+            );
+
+            // Country ISO A2 → display name mapping
+            const NAMES = {
+                AT: "Austria",
+                BE: "Belgium",
+                CH: "Switzerland",
+                CZ: "Czechia",
+                DE: "Germany",
+                DK1: "Denmark",
+                FR: "France",
+                NL: "Netherlands",
+                NO: "Norway",
+                SE: "Sweden",
+                FI: "Finland",
+                PL: "Poland",
+                IT: "Italy",
+                ES: "Spain",
+                PT: "Portugal",
+                GB: "United Kingdom",
+                IE: "Ireland",
+                LU: "Luxembourg",
+                SK: "Slovakia",
+                HU: "Hungary",
+                RO: "Romania",
+                BG: "Bulgaria",
+                GR: "Greece",
+                HR: "Croatia",
+                SI: "Slovenia",
+                RS: "Serbia",
+                UA: "Ukraine",
+                BY: "Belarus",
+                MD: "Moldova",
+                BA: "Bosnia & Herzegovina",
+                MK: "North Macedonia",
+                AL: "Albania",
+                ME: "Montenegro",
+                LT: "Lithuania",
+                LV: "Latvia",
+                EE: "Estonia",
+                XK: "Kosovo",
+            };
+
+            (async () => {
+                // Load D3 and TopoJSON from CDN
+                await Promise.all([
+                    new Promise((r) => {
+                        const s = document.createElement("script");
+                        s.src =
+                            "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
+                        s.onload = r;
+                        document.head.appendChild(s);
+                    }),
+                    new Promise((r) => {
+                        const s = document.createElement("script");
+                        s.src =
+                            "https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js";
+                        s.onload = r;
+                        document.head.appendChild(s);
+                    }),
+                ]);
+
+                const wrap = document.getElementById("map-wrap");
+                document.getElementById("map-loading").remove();
+
+                const W = wrap.clientWidth || 700;
+                const H = wrap.clientHeight || 500;
+
+                const svg = d3
+                    .select(wrap)
+                    .append("svg")
+                    .attr("id", "europe-map")
+                    .attr("width", "100%")
+                    .attr("height", "100%")
+                    .attr("viewBox", `0 0 ${W} ${H}`)
+                    .attr("preserveAspectRatio", "xMidYMid meet");
+
+                // Sea background
+                svg.append("rect")
+                    .attr("width", W)
+                    .attr("height", H)
+                    .attr("fill", "#e8edf5");
+
+                const projection = d3
+                    .geoMercator()
+                    .center([10, 51])
+                    .scale(Math.min(W, H) * 2.0)
+                    .translate([W / 2, H / 2]);
+
+                const path = d3.geoPath().projection(projection);
+
+                // Tooltip element (HTML, positioned over map)
+                const tt = document.createElement("div");
+                tt.style.cssText =
+                    "position:absolute;pointer-events:none;background:#fff;border:1px solid #d0d5dd;padding:4px 10px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#0a4bcc;border-radius:2px;opacity:0;transition:opacity 0.15s;white-space:nowrap;";
+                wrap.style.position = "relative";
+                wrap.appendChild(tt);
+
+                // Fetch Natural Earth Europe TopoJSON
+                const world = await d3.json(
+                    "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json",
+                );
+                const countries110 = topojson.feature(
+                    world,
+                    world.objects.countries,
+                );
+
+                // ISO numeric -> alpha2. Dataset IDs may be numbers or zero-padded strings,
+                // so parse to integer for reliable lookup.
+                const NUM2A2_RAW = {
+                    40: "AT",
+                    56: "BE",
+                    756: "CH",
+                    203: "CZ",
+                    276: "DE",
+                    208: "DK1",
+                    250: "FR",
+                    528: "NL",
+                    578: "NO",
+                    752: "SE",
+                    246: "FI",
+                    616: "PL",
+                    380: "IT",
+                    724: "ES",
+                    620: "PT",
+                    826: "GB",
+                    372: "IE",
+                    442: "LU",
+                    703: "SK",
+                    348: "HU",
+                    642: "RO",
+                    100: "BG",
+                    300: "GR",
+                    191: "HR",
+                    705: "SI",
+                    688: "RS",
+                    804: "UA",
+                    112: "BY",
+                    498: "MD",
+                    70: "BA",
+                    807: "MK",
+                    8: "AL",
+                    499: "ME",
+                    440: "LT",
+                    428: "LV",
+                    233: "EE",
+                };
+                const NUM2A2 = (f) => NUM2A2_RAW[parseInt(f.id, 10)];
+
+                // Filter to Europe only
+                const europeFeatures = countries110.features.filter((f) =>
+                    NUM2A2(f),
+                );
+
+                // Graticule
+                svg.append("path")
+                    .datum(d3.geoGraticule()())
+                    .attr("d", path)
+                    .attr("fill", "none")
+                    .attr("stroke", "#c8d4e4")
+                    .attr("stroke-width", 0.4)
+                    .attr("opacity", 0.6);
+
+                // Draw countries
+                const countryPaths = svg
+                    .selectAll("path.country")
+                    .data(europeFeatures)
+                    .enter()
+                    .append("path")
+                    .attr("class", (d) => {
+                        const a2 = NUM2A2(d);
+                        return (
+                            "country" + (AVAILABLE.has(a2) ? " available" : "")
+                        );
+                    })
+                    .attr("id", (d) => NUM2A2(d) || d.id)
+                    .attr("data-name", (d) => NAMES[NUM2A2(d)] || "")
+                    .attr("d", path);
+
+                // Sea labels
+                const seaLabels = [
+                    { label: "ATLANTIC", lon: -8, lat: 47 },
+                    { label: "MED SEA", lon: 8, lat: 38.5 },
+                    { label: "BALTIC", lon: 18, lat: 57.5 },
+                    { label: "NORTH SEA", lon: 3, lat: 55.5 },
+                ];
+                seaLabels.forEach(({ label, lon, lat }) => {
+                    const [x, y] = projection([lon, lat]);
+                    svg.append("text")
+                        .attr("x", x)
+                        .attr("y", y)
+                        .attr("text-anchor", "middle")
+                        .attr("font-family", "'Share Tech Mono',monospace")
+                        .attr("font-size", 9)
+                        .attr("fill", "#a8b4c8")
+                        .attr("opacity", 0.85)
+                        .text(label);
+                });
+
+                // Border mesh
+                svg.append("path")
+                    .datum(
+                        topojson.mesh(
+                            world,
+                            world.objects.countries,
+                            (a, b) => a !== b,
+                        ),
+                    )
+                    .attr("d", path)
+                    .attr("fill", "none")
+                    .attr("stroke", "#b0bac8")
+                    .attr("stroke-width", 0.6);
+
+                // Interactions
+                countryPaths.each(function (d) {
+                    const a2 = NUM2A2(d);
+                    if (!AVAILABLE.has(a2)) return;
+                    const el = this;
+
+                    el.addEventListener("mouseenter", (e) => {
+                        const name = NAMES[a2] || a2;
+                        tt.textContent = name;
+                        tt.style.opacity = "1";
+                    });
+                    el.addEventListener("mousemove", (e) => {
+                        const rect = wrap.getBoundingClientRect();
+                        tt.style.left = e.clientX - rect.left + 12 + "px";
+                        tt.style.top = e.clientY - rect.top - 28 + "px";
+                    });
+                    el.addEventListener("mouseleave", () => {
+                        tt.style.opacity = "0";
+                    });
+                    el.addEventListener("click", (e) => {
+                        svg.selectAll("path.country").classed(
+                            "selected",
+                            false,
+                        );
+                        d3.select(el).classed("selected", true);
+                        state.selectedCountry = a2;
+                        selectedLabel.textContent = `${NAMES[a2]} (${a2})`;
+                        log(`region → ${NAMES[a2]} (${a2})`, "info");
+                        openPopup(a2, e);
+                    });
+                });
+
+                document.getElementById("map-loading") &&
+                    document.getElementById("map-loading").remove();
+            })();
+
+            // ── COUNTRY POPUP ─────────────────────────────────────────────────────────
+            const popup = document.getElementById("countryPopup");
+            const popupName = document.getElementById("popupName");
+            const popupCode = document.getElementById("popupCode");
+            const popupTs = document.getElementById("popupTs");
+            const popupFields = {
+                spot_price: document.getElementById("popupSpotPrice"),
+                total_load: document.getElementById("popupTotalLoad"),
+                flow_in: document.getElementById("popupFlowIn"),
+                flow_out: document.getElementById("popupFlowOut"),
+            };
+
+            function setPopupLoading() {
+                Object.values(popupFields).forEach((el) => {
+                    el.textContent = "…";
+                    el.classList.add("loading");
+                });
+            }
+
+            function positionPopup(e) {
+                const wrap = document.getElementById("map-wrap");
+                const rect = wrap.getBoundingClientRect();
+                const pw = popup.offsetWidth || 220;
+                const ph = popup.offsetHeight || 160;
+                let x = e.clientX - rect.left + 14;
+                let y = e.clientY - rect.top - 20;
+                if (x + pw > rect.width - 8)
+                    x = e.clientX - rect.left - pw - 14;
+                if (y + ph > rect.height - 8) y = rect.height - ph - 8;
+                if (y < 4) y = 4;
+                popup.style.left = x + "px";
+                popup.style.top = y + "px";
+            }
+
+            async function openPopup(a2, e) {
+                popupName.textContent = NAMES[a2] || a2;
+                popupCode.textContent = `(${a2})`;
+                popupTs.textContent = "ts: " + (state.timestamp || "—");
+                setPopupLoading();
+                popup.classList.add("visible");
+                requestAnimationFrame(() => positionPopup(e));
+
+                const ts = state.timestamp || "fresh";
+                try {
+                    const res = await fetch("/fetch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            timestamp: ts,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                    }
+                    const region = data[a2] || {};
+
+                    const fieldMap = [
+                        {
+                            el: popupFields.spot_price,
+                            key: "price",
+                            unit: " €/MWh",
+                        },
+                        {
+                            el: popupFields.total_load,
+                            key: "load",
+                            unit: " MW",
+                        },
+                        {
+                            el: popupFields.flow_in,
+                            key: "total_flow_in",
+                            unit: " MW",
+                        },
+                        {
+                            el: popupFields.flow_out,
+                            key: "total_flow_out",
+                            unit: " MW",
+                        },
+                    ];
+                    fieldMap.forEach(({ el, key, unit }) => {
+                        const val = region[key];
+                        el.textContent =
+                            val !== undefined && val !== null
+                                ? Number(val).toLocaleString("en-GB", {
+                                      maximumFractionDigits: 1,
+                                  }) + unit
+                                : "n/a";
+                        el.classList.remove("loading");
+                    });
+                } catch {
+                    Object.values(popupFields).forEach((el) => {
+                        el.textContent = "err";
+                        el.classList.remove("loading");
+                    });
+                }
+            }
+
+            function closePopup() {
+                popup.classList.remove("visible");
+            }
+
+            document
+                .getElementById("popupClose")
+                .addEventListener("click", closePopup);
+
+            // Close when clicking the map background (sea)
+            document
+                .getElementById("map-wrap")
+                .addEventListener("click", (e) => {
+                    if (
+                        e.target.tagName === "rect" ||
+                        e.target.tagName === "svg"
+                    )
+                        closePopup();
+                });
+
+            // ── INIT ──────────────────────────────────────────────────────────────────
+            initSliderLabels();
+        </script>
+    </body>
+</html>

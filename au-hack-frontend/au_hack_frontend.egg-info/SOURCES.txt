@@ -1,0 +1,8 @@
+README.md
+main.py
+pyproject.toml
+au_hack_frontend.egg-info/PKG-INFO
+au_hack_frontend.egg-info/SOURCES.txt
+au_hack_frontend.egg-info/dependency_links.txt
+au_hack_frontend.egg-info/requires.txt
+au_hack_frontend.egg-info/top_level.txt
